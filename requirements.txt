@@ -1,1 +1,7 @@
 streamlit
+transformers
+torch
+Pillow
+sentencepiece
+PyMuPDF
+regex
