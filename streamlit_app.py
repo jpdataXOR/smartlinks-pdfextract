@@ -24,7 +24,14 @@ available_models = [
 selected_model = st.selectbox("Choose model", options=available_models, index=0)
 
 # Upload PDF
-uploaded_file = st.file_uploader("Upload Invoice PDF", type=["pdf"])
+uploaded_file = st.file_uploader(
+    "Upload Invoice PDF", 
+    type=["pdf"], 
+    disabled=not bool(api_key)  # Disabled if api_key is empty
+)
+
+if not api_key:
+    st.info("Please enter your OpenRouter API Key to enable file upload.")
 
 if uploaded_file and api_key:
     # Open PDF with PyMuPDF
