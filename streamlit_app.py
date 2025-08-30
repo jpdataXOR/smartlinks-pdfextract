@@ -14,16 +14,24 @@ api_key = params.get("api_key", "")
 if not api_key:
     api_key = st.text_input("Enter your OpenRouter API Key:", type="password")
 
-# --- Model selection ---
-st.subheader("Select AI Model")
-available_models = [
-    "meta-llama/llama-4-maverick:free",
-    "google/gemini-2.5-flash-image-preview:free",
-    "mistralai/mistral-small-3.2-24b-instruct:free"
-]
-selected_model = st.selectbox("Choose model", options=available_models, index=0)
+# --- Sidebar: Model selection and Reset ---
+with st.sidebar:
+    st.subheader("Select AI Model")
+    available_models = [
+        "meta-llama/llama-4-maverick:free",
+        "google/gemini-2.5-flash-image-preview:free",
+        "mistralai/mistral-small-3.2-24b-instruct:free"
+    ]
+    selected_model = st.selectbox("Change model", options=available_models, index=0)
 
-# Upload PDF
+    st.markdown("---")
+    if st.button("🔄 Reset Application"):
+        for key in ['extracted_json', 'extraction_done', 'processed_json', 'processing_done']:
+            if key in st.session_state:
+                del st.session_state[key]
+        st.rerun()
+
+# Upload PDF (only enable if API key is present)
 uploaded_file = st.file_uploader(
     "Upload Invoice PDF", 
     type=["pdf"], 
@@ -216,10 +224,3 @@ If amount <= 100 no discount"""
                     st.error(f"Error processing rules: {processed_json['error']}")
         else:
             st.error("Could not extract invoice amount from the document.")
-
-# Reset button
-if st.sidebar.button("🔄 Reset Application"):
-    for key in ['extracted_json', 'extraction_done', 'processed_json', 'processing_done']:
-        if key in st.session_state:
-            del st.session_state[key]
-    st.rerun()
