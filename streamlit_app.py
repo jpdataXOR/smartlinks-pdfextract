@@ -1,56 +1,101 @@
 import streamlit as st
 import fitz  # PyMuPDF
-import re
 from PIL import Image
+import requests
+import json
+import io
+import base64
 
-st.title("Invoice Amount Extractor")
+# ======================
+# Helper Class
+# ======================
+class GoogleFlashOCR:
+    def __init__(self, api_key, model="google/gemini-2.5-flash-image-preview:free"):
+        self.api_key = api_key
+        self.model = model
+        self.url = "https://openrouter.ai/api/v1/chat/completions"
+        self.headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
 
-# Upload PDF
-uploaded_file = st.file_uploader("Upload Invoice PDF", type=["pdf"])
-if uploaded_file:
-    # Open PDF with PyMuPDF
-    doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
-    
-    # Convert first page to image for preview
-    page = doc.load_page(0)
-    pix = page.get_pixmap()
-    image = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-    st.image(image, caption="PDF First Page", use_container_width=True)
+    def extract_invoice_amount(self, image_bytes):
+        # Encode image to base64
+        b64 = base64.b64encode(image_bytes).decode("utf-8")
+        image_url = f"data:image/png;base64,{b64}"
 
-    # Extract text from all pages
-    full_text = ""
-    for page in doc:
-        full_text += page.get_text()
+        payload = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                "You are an invoice extraction system. "
+                                "From this invoice image, extract ONLY the total invoice amount "
+                                "and return JSON in the form: {amount: <number>, coordinates: [x,y]}"
+                            )
+                        },
+                        {"type": "image_url", "image_url": {"url": image_url}},
+                    ],
+                }
+            ],
+        }
 
-    # Debug window hidden in an expander
-    with st.expander("Show PDF Text (Debug)"):
-        st.text_area("PDF Text", value=full_text, height=400)
+        resp = requests.post(self.url, headers=self.headers, data=json.dumps(payload))
+        if resp.status_code != 200:
+            return {"error": resp.text}
+        try:
+            return resp.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            return {"error": str(e)}
 
-    # --- Smarter invoice amount extraction ---
-    priority_keywords = ["INVOICE TOTAL", "TOTAL", "AMOUNT DUE", "AMOUNT"]
-    # Find all numbers in text with positions
-    numbers = [(m.start(), m.group()) for m in re.finditer(r"[\d,.]+", full_text)]
+# ======================
+# Streamlit UI
+# ======================
+st.title("Invoice Amount Extractor (AI Only, Multi-Page PDF)")
 
-    best_amount = None
-    min_distance = float('inf')
+# ✅ Use st.query_params (new API)
+query_params = st.query_params
+default_api_key = query_params.get("api_key", [None])[0] if "api_key" in query_params else None
 
-    for kw in priority_keywords:
-        for kw_match in re.finditer(kw, full_text, re.IGNORECASE):
-            kw_pos = kw_match.start()
-            for num_pos, num in numbers:
-                # Skip numbers that are too long (ABN, phone, account numbers)
-                if len(num.replace(",", "").replace(".", "").replace(" ", "")) > 8:
-                    continue
-                # Prefer numbers with decimals (likely invoice totals)
-                if "." not in num:
-                    continue
-                # Find closest number to the keyword
-                distance = abs(num_pos - kw_pos)
-                if distance < min_distance:
-                    min_distance = distance
-                    best_amount = num
+# Show textbox for API key
+api_key = st.text_input("OpenRouter API Key", value=default_api_key or "", type="password")
 
-    if best_amount:
-        st.success(f"Invoice Amount: {best_amount}")
-    else:
-        st.warning("Invoice amount not found.")
+if not api_key:
+    st.warning("⚠️ Please paste your OpenRouter API key above to continue.")
+else:
+    uploaded_file = st.file_uploader("Upload Invoice PDF", type=["pdf"])
+    if uploaded_file:
+        # Open PDF
+        doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
+        st.write(f"📄 PDF has **{len(doc)} pages**")
+
+        # Preview thumbnails
+        st.subheader("Preview Pages")
+        for i, page in enumerate(doc):
+            pix = page.get_pixmap(matrix=fitz.Matrix(0.3, 0.3))  # smaller preview
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            st.image(img, caption=f"Page {i+1}", use_container_width=True)
+
+        if st.button("Extract with AI (all pages)"):
+            gocr = GoogleFlashOCR(api_key=api_key)
+
+            all_results = []
+            for i, page in enumerate(doc):
+                # Render page full res for AI
+                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # higher DPI
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+
+                with st.spinner(f"Processing page {i+1}..."):
+                    ai_result = gocr.extract_invoice_amount(buf.getvalue())
+
+                all_results.append({"page": i+1, "result": ai_result})
+
+            st.subheader("AI Extraction Results")
+            st.json(all_results)
