@@ -75,10 +75,14 @@ else:
 
         # Preview thumbnails
         st.subheader("Preview Pages")
+        # Preview thumbnails (better resolution)
+        st.subheader("Preview Pages")
         for i, page in enumerate(doc):
-            pix = page.get_pixmap(matrix=fitz.Matrix(0.3, 0.3))  # smaller preview
+            # Use higher scale for clarity (2 = ~144 DPI)
+            pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
             st.image(img, caption=f"Page {i+1}", use_container_width=True)
+
 
         if st.button("Extract with AI (all pages)"):
             gocr = GoogleFlashOCR(api_key=api_key)
