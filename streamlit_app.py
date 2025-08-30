@@ -19,8 +19,7 @@ st.subheader("Select AI Model")
 available_models = [
     "meta-llama/llama-4-maverick:free",
     "google/gemini-2.5-flash-image-preview:free",
-    "mistralai/mistral-small-3.2-24b-instruct:free",
-    "moonshotai/kimi-vl-a3b-thinking:free"
+    "mistralai/mistral-small-3.2-24b-instruct:free"
 ]
 selected_model = st.selectbox("Choose model", options=available_models, index=0)
 
